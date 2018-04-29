@@ -3,3 +3,8 @@
 ################################################################################
 
 /.vs
+/Classifcation/.vs
+/data/
+/Classification/data/
+/.vscode
+/Classification/.vs/Classification/v15
