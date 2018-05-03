@@ -1,6 +1,8 @@
+import os
 
 import tensorflow as tf
-from PRCNN import PRCNN
+
+from PRCNN_fma import PRCNN
 
 
 def main():

@@ -35,7 +35,7 @@ def readFiles(dic):
             # [n, ] and sample rate
             # because sr = k(samples/sec), so n = sr * duration
             # the amplitude of pcm is -1f ~ 1f
-            pcm, sr = ros.load(path)
+            pcm, _ = ros.load(path)
             X.append(pcm)
             y.append(i)
             print('%d of %d files read' % (idx, l))

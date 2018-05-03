@@ -16,7 +16,7 @@ Routine:
 
 
 Result:
-    When using GTZAN, this dataset is too small, and easily overfit, so fin acc = 0.59 without any optimization
+    When using GTZAN, this dataset is too small, and easily overfit, fin acc = 0.59 without any optimization
 
 """
 
@@ -43,14 +43,12 @@ class PRCNN():
         print('Y: ', self.Y.shape)
         print('TestX: ', self.TestX.shape)
         print('TestY: ', self.TestY.shape)
-        self.BatchSize = 20
+        self.BatchSize = 32
         self.dropout = 0.5
 
     def GetNextBatch(self):
-        s = self.BatchSize + (self.BatchSize//10)
-        index = np.random.choice(self.Y.shape[0], s)
-
-        return self.X[index[:self.BatchSize]], self.Y[index[:self.BatchSize]], self.X[index[self.BatchSize:]], self.Y[index[self.BatchSize:]]
+        index = np.random.choice(self.Y.shape[0], self.BatchSize)
+        return self.X[index], self.Y[index]
 
     def Inference_CNN(self, X):
         conv1 = tf.layers.conv2d(X, filters=16, kernel_size=(
@@ -80,7 +78,7 @@ class PRCNN():
             256, forget_bias=1.0, state_is_tuple=True)
         init_state = lstm_cell.zero_state(
             shape[0], dtype=tf.float32)  # 初始化全零 state
-        outputs, final_state = tf.nn.dynamic_rnn(
+        outputs, _ = tf.nn.dynamic_rnn(
             lstm_cell, X, initial_state=init_state, time_major=False)
         print('RNN builded', outputs.shape)
         # 把 outputs 变成 列表 [(batch, outputs)..] * steps
@@ -91,12 +89,9 @@ class PRCNN():
 
     def Inference_Dense(self, cnn, lstm, mode=tf.estimator.ModeKeys.TRAIN):
         init = tf.concat([cnn, lstm], axis=1)
-        dense = tf.layers.dense(init, units=512, activation=tf.nn.relu)
-        self.prob = tf.placeholder_with_default(0, shape=())
-        drop = tf.layers.dropout(
-            dense, rate=self.prob)
+        dense = tf.layers.dense(init, units=10)
         print('Dense builded')
-        return tf.layers.dense(drop, units=10)
+        return dense
 
     def Optimize(self, output, label):
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
@@ -128,16 +123,16 @@ class PRCNN():
             sess.run(tf.global_variables_initializer())
             for i in range(epoch):
                 for j in range(batch_per_epoch):
-                    batchX, batchY, valiX, valiY = self.GetNextBatch()
+                    batchX, batchY = self.GetNextBatch()
                     # don't forget that batchY is one-hot label, convert it using tf.one_hot in loss
                     l, _ = sess.run([self.loss, self.optimizer], feed_dict={
-                        self.varX: batchX, self.varLabel: batchY, self.prob: self.dropout})
+                        self.varX: batchX, self.varLabel: batchY})
                     if j % 50 == 0:
                         print("epoch %d, batch %d, loss: %f" % (i, j, l))
-                print("epoch %d" % i)
-                correct = self.Validation(sess, valiX, valiY)
+                
+                correct = self.Validation(sess, self.TestX, self.TestY)
                 print("acc: %f" % (correct[correct].size / correct.size))
-            
+
             print("test: ")
             correct = self.Validation(sess, self.TestX, self.TestY)
             print("acc: %f" % (correct[correct].size / correct.size))
