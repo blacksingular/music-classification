@@ -108,13 +108,14 @@ class PRCNN():
 
     def Inference_Dense(self, cnn, lstm, mode=tf.estimator.ModeKeys.TRAIN):
         init = tf.concat([cnn, lstm], axis=1)
-        dense = tf.layers.dense(init, units=10)
+        ''' NOTE: output units is NOT 10 '''
+        dense = tf.layers.dense(init, units=16)
         print('Dense builded')
         return dense
 
     def Optimize(self, output, label):
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
-            labels=tf.one_hot(label, depth=10), logits=output))
+            labels=tf.one_hot(label, depth=16), logits=output))
         optimizer = tf.train.AdamOptimizer().minimize(loss)
         print('Optimize()')
         return loss, optimizer

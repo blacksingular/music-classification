@@ -2,7 +2,7 @@ import os
 
 import tensorflow as tf
 
-from PRCNN_fma import PRCNN
+from CNTK_RNN_fma import PRCNN
 
 
 def main():

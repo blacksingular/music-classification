@@ -6,13 +6,15 @@ import numpy as np
 import pandas as pd
 from random import shuffle
 from multiprocessing.dummy import Pool as ThreadPool
+import uuid
 
 import json
 
-LOG_LEVEL = 0
+LOG_LEVEL = 1
+
+
 
 read_count = 0
-
 
 
 DATASET_PATH = './data/fma_medium'
@@ -20,6 +22,8 @@ DATASET_PATH = './data/fma_medium'
 TRACK_CSV = './data/fma_metadata/tracks.csv'
 
 FMA_DICT = './data/fma_genredict.json'
+
+PRE_READ_PATH = './pre_read'
 
 
 def FindFiles():
@@ -40,19 +44,28 @@ def FindFiles():
         raise FileNotFoundError('Please extract dataset first')
 
 
-def Spectrogram(pcm, freq=512, t=128):
+def Spectrogram(pcm, freq=512, use_fixed_time=False):
     if LOG_LEVEL < 1:
         print('spectrogram()')
     # input a [samples, ] vertor, output a [1 + n_fft/2, samples / hop], and n_fft = 2048, hop_length = 512 by default
-    hop_length = np.math.floor(pcm.shape[0] / t) + 1
     # return [freq + 1, t]
-    return r.stft(pcm, n_fft=(freq * 2), hop_length=hop_length)
+    return r.stft(pcm, n_fft=(freq * 2))
+
+
+def MFCC(pcm):
+    # cut or pad input
+    if pcm.shape[0] > 30 * 22050:
+        pcm = pcm[:30 * 22050]
+    else:
+        pcm = np.pad(pcm, (0, 30 * 22050 - pcm.shape[0]), mode='constant')
+    return r.feature.mfcc(y=pcm, n_mfcc=32)
 
 
 def Read(pcm):
     if LOG_LEVEL < 1:
         print('Read()')
-    return Spectrogram(pcm).T
+    # [t, n_mfcc], t is (n_samples / hop)
+    return MFCC(pcm).T
 
 
 def GetGenreDict(files):
@@ -76,12 +89,33 @@ def GetGenreDict(files):
     return mapping
 
 
+def PreRead(mapping):
+    if not os.path.exists(PRE_READ_PATH):
+        os.makedirs(PRE_READ_PATH)
+    file_dic = dict()
+    for key, value in mapping.items():
+        for path in value:
+            try:
+                pcm, _ = r.load(path)
+                name = PRE_READ_PATH + '/' + str(uuid.uuid1())
+                pcm.dump(name)
+                if key not in file_dic:
+                    file_dic[key] = []
+                file_dic[key].append(name)
+                print(key, name)
+            except:
+                pass
+    with open(PRE_READ_PATH+'files.json', 'r') as fp:
+        json.dump(file_dic, fp)
+    return file_dic
+
+
 def PrepareData(d):
     ''' Notice that here d is a dict of the path list of all genres' all files '''
     matX = []
     matY = []
     i = 0
-    for key, value in d.items():
+    for _, value in d.items():
         for f in value:
             matX.append(f)
             matY.append(i)
@@ -107,6 +141,10 @@ def GetPCM(path):
         if LOG_LEVEL < 1:
             print(read_count)
             read_count += 1
+
+        # pcm = [time_series, ]
+        # time_series is n samples
+        # with sample rate = sr, we can find the duration is (n / sr) secs.
         return pcm
     except:
         # broken file
@@ -142,4 +180,4 @@ def GetProcessedMatrix(X, y):
     pool.close()
     pool.join()
 
-    return np.absolute(np.array(results))[:, :, :, None], np.array(y)
+    return np.array(results), np.array(y)
