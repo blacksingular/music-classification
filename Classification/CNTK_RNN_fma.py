@@ -1,14 +1,13 @@
-"""Parelleling Bi-RNN + CNN according to paper 1712.08370
+"""A simple model using LSTM
 
 Routine:
     1. Load MFCC with variable time length: [N, n_mfcc, ]
-    2. embedding to [N, 32, ] -> lstm -> use last output [N. 256]
+    2. lstm -> use last output [N, 256]
     4. Dense(1024)
-    5. Softmax(C)
+    5. Dense(1024)
+    6. Softmax(C)
 
-Ported to CNTK, in order to get ONNX model
-
-Result:
+Result: in fma dataset, got near 50 acc wihout any optim
     
 """
 
@@ -38,7 +37,7 @@ class PRCNN():
         # notice that x is the list of path lists, y is genre id list
         self.X, self.Y, self.TestX, self.TestY = fma.PrepareData(
             fma.FindFiles())
-        self.BatchSize = 32
+        self.BatchSize = 4
         self.dropout = 0.5
         self.n_count = 0
         self.n_mfcc = 32
@@ -88,36 +87,34 @@ class PRCNN():
         # return loss, optimizer
 
     def Build(self, mode, epoch=12):
-        with K.get_session():
-            # create model
-            model = Sequential()
-            model.add(LSTM(256, return_sequences=True, stateful=True, input_shape=(None, self.n_mfcc),
-                    batch_input_shape=(self.BatchSize, None, self.n_mfcc)))
-            model.add(LSTM(256))
-            model.add(Dense(16, activation='softmax'))
-            model.compile(loss='categorical_crossentropy',
-                        optimizer='rmsprop',
-                        metrics=['accuracy'])
+        # create model
+        model = Sequential()
+        model.add(LSTM(256, return_sequences=True, stateful=True, input_shape=(None, self.n_mfcc),
+                batch_input_shape=(16 * self.BatchSize, None, self.n_mfcc)))
+        model.add(LSTM(256))
+        model.add(Dense(1024, activation='relu'))
+        model.add(Dense(1024, activation='relu'))
+        model.add(Dense(16, activation='softmax'))
+        model.compile(loss='categorical_crossentropy',
+                    optimizer='rmsprop',
+                    metrics=['accuracy'])
 
 
-            batch_per_epoch = len(self.X) // self.BatchSize
+        batch_per_epoch = len(self.X) // self.BatchSize
+        for i in range(epoch):
+            for j in range((batch_per_epoch // 16)):
+                with open(MODEL_PATH+'ijk.json', 'w') as fp:
+                    json.dump({'i': i, 'j': j}, fp)
+                batchX, batchY = self.GetNext16Batch(j)
+                print("next batch: %d" %
+                        j, batchX.shape, batchY.shape)
+                l = model.train_on_batch(batchX, batchY)
+                model.save('./saved/rnn.h5')  # creates a HDF5 file
+                print("epoch %d, batch %d, loss: " % (i, j), l)
 
-            for i in range(epoch):
-                for j in range((batch_per_epoch // 16)):
-                    with open(MODEL_PATH+'ijk.json', 'w') as fp:
-                        json.dump({'i': i, 'j': j}, fp)
-                    batchX, batchY = self.GetNext16Batch(j)
-                    print("next 16 batch: %d" %
-                          (j*16), batchX.shape, batchY.shape)
-                    for k in range(16):
-                        # don't forget that batchY is one-hot label, convert it using tf.one_hot in loss
-                        l = model.train_on_batch(batchX[self.BatchSize*k:self.BatchSize*(k+1)], batchY[self.BatchSize*k:self.BatchSize*(k+1)])
-                        C.combine(model.model.outputs).save('CNTK_Model')
-                    print("epoch %d, batch %d, loss: " % (i, j*16 + k), l)
-
-            # print("test: ")
-            # score = model.evaluate(x_val, y_val, batch_size=32, verbose=1)
-            # print("acc: %f" % (correct[correct].size / correct.size))
+        # print("test: ")
+        # score = model.evaluate(x_val, y_val, batch_size=32, verbose=1)
+        # print("acc: %f" % (correct[correct].size / correct.size))
 
 
     def Validation(self, sess, X, y):
