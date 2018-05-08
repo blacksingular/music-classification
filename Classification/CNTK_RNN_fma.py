@@ -1,13 +1,19 @@
 """A simple model using LSTM
 
 Routine:
-    1. Load MFCC with variable time length: [N, n_mfcc, ]
+    1. Load MFCC with variable time length: [N, t, n_mfcc]
     2. lstm -> use last output [N, 256]
     4. Dense(1024)
     5. Dense(1024)
     6. Softmax(C)
 
-Result: in fma dataset, got near 50 acc wihout any optim
+Result: in fma dataset, got near 50 acc without any optim
+
+
+Routine 2:
+    fmcc and spectrogram all go to seperate lstm, and concatnate outputs into dense layers
+
+Result: fma got near 50 acc with batch normalization
     
 """
 
@@ -18,8 +24,9 @@ import sys
 import json
 
 import numpy as np
-from keras.models import Sequential
-from keras.layers import LSTM, Dense, Embedding
+
+from keras.models import Model
+from keras.layers import Input, LSTM, Dense, Embedding, Concatenate, BatchNormalization
 from keras import backend as K
 import cntk as C
 
@@ -35,37 +42,35 @@ class PRCNN():
 
     def __init__(self):
         # notice that x is the list of path lists, y is genre id list
-        self.X, self.Y, self.TestX, self.TestY = fma.PrepareData(
-            fma.FindFiles())
-        self.BatchSize = 4
+        self.X, self.Y, self.TestX, self.TestY = fma.PrepareClusterData(fma.GetEchoNestFeatures())
+        self.BatchSize = 64
         self.dropout = 0.5
         self.n_count = 0
         self.n_mfcc = 32
+        self.n_freq = 65
 
     def GetNext16Batch(self, j):
         if self.n_count == 0:
-            self.n_count = j * 16 * self.BatchSize
-        batch_x, batch_y = fma.GetProcessedMatrix(self.X[self.n_count:(
-            16*self.BatchSize + self.n_count)], self.Y[self.n_count:(
-                16*self.BatchSize + self.n_count)])
+            self.n_count = j * self.BatchSize
+        specX, mfccX, batch_y = fma.GetProcessedMatrix(self.X[self.n_count:(self.BatchSize + self.n_count)], self.Y[self.n_count:(self.BatchSize + self.n_count)])
 
-        self.n_count += batch_x.shape[0]
+        self.n_count += specX.shape[0]
         self.n_count %= len(self.X)
-        remains = 16 * self.BatchSize - batch_x.shape[0]
+        remains = self.BatchSize - specX.shape[0]
 
         # some audio may broken, ensure finally get all values
-        while batch_x.shape[0] < (16 * self.BatchSize):
-            remain_x, remain_y = fma.GetProcessedMatrix(
+        while specX.shape[0] < (self.BatchSize):
+            remain_spec_x, remain_mfcc_x, remain_y = fma.GetProcessedMatrix(
                 self.X[self.n_count:(self.n_count+remains)], self.Y[self.n_count:(self.n_count+remains)])
-            batch_x = np.concatenate((batch_x, remain_x))
-            self.n_count += batch_x.shape[0]
+            specX = np.concatenate((specX, remain_spec_x))
+            mfccX = np.concatenate((mfccX, remain_mfcc_x))
+            self.n_count += specX.shape[0]
             self.n_count %= len(self.X)
-            remains = 16 * self.BatchSize - batch_x.shape[0]
+            remains = self.BatchSize - specX.shape[0]
             batch_y = np.concatenate((batch_y, remain_y))
-        y = np.zeros((batch_y.shape[0], 16))
+        y = np.zeros((batch_y.shape[0], 4))
         y[range(batch_y.shape[0]), batch_y] = 1
-        return batch_x, y
-
+        return specX, mfccX, y
 
     def Inference_RNN(self, X):
         pass
@@ -86,36 +91,47 @@ class PRCNN():
         # print('Optimize()')
         # return loss, optimizer
 
-    def Build(self, mode, epoch=12):
+    def Build(self, epoch=12):
         # create model
-        model = Sequential()
-        model.add(LSTM(256, return_sequences=True, stateful=True, input_shape=(None, self.n_mfcc),
-                batch_input_shape=(16 * self.BatchSize, None, self.n_mfcc)))
-        model.add(LSTM(256))
-        model.add(Dense(1024, activation='relu'))
-        model.add(Dense(1024, activation='relu'))
-        model.add(Dense(16, activation='softmax'))
-        model.compile(loss='categorical_crossentropy',
-                    optimizer='rmsprop',
-                    metrics=['accuracy'])
+        spec = Input(shape=(None, self.n_freq), batch_shape=(self.BatchSize, None, self.n_freq))
+        mfcc = Input(shape=(None, self.n_mfcc), batch_shape=(self.BatchSize, None, self.n_mfcc))
 
+        line_1 = BatchNormalization()(spec)
+        line_1 = LSTM(64, return_sequences=True, stateful=True)(line_1)
+        line_1 = LSTM(64)(line_1)
+
+        line_2 = BatchNormalization()(mfcc)
+        line_2 = LSTM(64, return_sequences=True, stateful=True)(line_2)
+        line_2 = LSTM(64)(line_2)
+
+        combine = Concatenate(axis=1)([line_1, line_2])
+
+        dense = BatchNormalization()(combine)
+        dense_1 = Dense(256, activation='relu')(dense)
+        dense_2 = Dense(256, activation='relu')(dense_1)
+        output = Dense(4, activation='softmax')(dense_2)
+
+        model = Model(inputs=[spec, mfcc], outputs=output)
+        
+        model.compile(loss='categorical_crossentropy',
+                      optimizer='rmsprop',
+                      metrics=['accuracy'])
 
         batch_per_epoch = len(self.X) // self.BatchSize
         for i in range(epoch):
-            for j in range((batch_per_epoch // 16)):
+            for j in range(batch_per_epoch):
                 with open(MODEL_PATH+'ijk.json', 'w') as fp:
                     json.dump({'i': i, 'j': j}, fp)
-                batchX, batchY = self.GetNext16Batch(j)
+                specX, mfccX, batchY = self.GetNext16Batch(j)
                 print("next batch: %d" %
-                        j, batchX.shape, batchY.shape)
-                l = model.train_on_batch(batchX, batchY)
+                      j, specX.shape, mfccX.shape, batchY.shape)
+                l = model.train_on_batch([specX, mfccX], batchY)
                 model.save('./saved/rnn.h5')  # creates a HDF5 file
                 print("epoch %d, batch %d, loss: " % (i, j), l)
 
         # print("test: ")
         # score = model.evaluate(x_val, y_val, batch_size=32, verbose=1)
         # print("acc: %f" % (correct[correct].size / correct.size))
-
 
     def Validation(self, sess, X, y):
         pass

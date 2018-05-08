@@ -8,10 +8,10 @@ from CNTK_RNN_fma import PRCNN
 def main():
     model = PRCNN()
     print('PRCNN')
-    model.Build(mode=tf.estimator.ModeKeys.TRAIN)
+    model.Build()
     print('builded')
-    model.train()
-    print('trained')
+    # model.train()
+    # print('trained')
 
 
 main()
