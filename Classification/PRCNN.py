@@ -30,7 +30,8 @@ import tensorflow as tf
 
 import GTZAN as G
 
-
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+MODEL_PATH = './tfmodel'
 class PRCNN():
     """Parelleling Bi-RNN + CNN"""
 
@@ -43,35 +44,86 @@ class PRCNN():
         print('Y: ', self.Y.shape)
         print('TestX: ', self.TestX.shape)
         print('TestY: ', self.TestY.shape)
-        self.BatchSize = 32
+        self.BatchSize = 30
         self.dropout = 0.5
 
-    def GetNextBatch(self):
-        index = np.random.choice(self.Y.shape[0], self.BatchSize)
-        return self.X[index], self.Y[index]
+    def batch_generator(self):
+        batch_x = []
+        batch_y = []
+        for i in range(self.X.shape[0]):
+            batch_x.append(self.X[i])
+            batch_y.append(self.Y[i])
+            if len(batch_x) >= self.BatchSize:
+                yield np.array(batch_x), np.array(batch_y)
+                batch_x = []
+                batch_y = []
 
-    def Inference_CNN(self, X):
-        conv1 = tf.layers.conv2d(X, filters=16, kernel_size=(
-            3, 3), strides=1, activation=tf.nn.relu)
-        pool1 = tf.layers.max_pooling2d(conv1, pool_size=(2, 2), strides=2)
-        conv2 = tf.layers.conv2d(pool1, filters=32, kernel_size=(
-            3, 3), strides=1, activation=tf.nn.relu)
-        pool2 = tf.layers.max_pooling2d(conv2, pool_size=(2, 2), strides=2)
-        conv3 = tf.layers.conv2d(pool2, filters=64, kernel_size=(
-            3, 3), strides=1, activation=tf.nn.relu)
-        pool3 = tf.layers.max_pooling2d(conv3, pool_size=(2, 2), strides=2)
-        conv4 = tf.layers.conv2d(pool3, filters=128, kernel_size=(
-            3, 3), strides=1, activation=tf.nn.relu)
-        pool4 = tf.layers.max_pooling2d(conv4, pool_size=(2, 2), strides=2)
-        conv5 = tf.layers.conv2d(pool4, filters=256, kernel_size=(
-            5, 5), strides=1, activation=tf.nn.relu)
-        out = tf.layers.max_pooling2d(conv5, pool_size=(2, 2), strides=2)
+    def normalized_Inference_CNN(self, X, state):
+        if state:
+            X = tf.layers.batch_normalization(X, axis=-1, training=True)
+            conv1 = tf.layers.conv2d(X, filters=16, kernel_size=(
+                3, 1), strides=1, padding='same', activation=None)
+            conv1 = tf.layers.batch_normalization(conv1, axis=-1, training=True)
+            conv1 = tf.nn.relu(conv1)
+            pool1 = tf.layers.max_pooling2d(conv1, pool_size=(2, 2), strides=2)
+            conv2 = tf.layers.conv2d(pool1, filters=32, kernel_size=(
+                3, 1), strides=1, padding='same', activation=tf.nn.relu)
+            pool2 = tf.layers.max_pooling2d(conv2, pool_size=(2, 2), strides=2)
+            conv3 = tf.layers.conv2d(pool2, filters=64, kernel_size=(
+                3, 1), strides=1, padding='same', activation=tf.nn.relu)
+            pool3 = tf.layers.max_pooling2d(conv3, pool_size=(2, 2), strides=2)
+            conv4 = tf.layers.conv2d(pool3, filters=128, kernel_size=(
+                3, 1), strides=1, padding='same', activation=tf.nn.relu)
+            pool4 = tf.layers.max_pooling2d(conv4, pool_size=(4, 4), strides=4)
+            conv5 = tf.layers.conv2d(pool4, filters=64, kernel_size=(
+                3, 1), strides=1, padding='same', activation=tf.nn.relu)
+            out = tf.layers.max_pooling2d(conv5, pool_size=(4, 4), strides=4)
+        else:
+            X = tf.layers.batch_normalization(X, axis=-1, training=False)
+            conv1 = tf.layers.conv2d(X, filters=16, kernel_size=(
+                3, 1), strides=1, padding='same', activation=None)
+            conv1 = tf.layers.batch_normalization(conv1, axis=-1, training=False)
+            conv1 = tf.nn.relu(conv1)
+            pool1 = tf.layers.max_pooling2d(conv1, pool_size=(2, 2), strides=2)
+            conv2 = tf.layers.conv2d(pool1, filters=32, kernel_size=(
+                3, 1), strides=1, padding='same', activation=tf.nn.relu)
+            pool2 = tf.layers.max_pooling2d(conv2, pool_size=(2, 2), strides=2)
+            conv3 = tf.layers.conv2d(pool2, filters=64, kernel_size=(
+               3, 1), strides=1, padding='same', activation=tf.nn.relu)
+            pool3 = tf.layers.max_pooling2d(conv3, pool_size=(2, 2), strides=2)
+            conv4 = tf.layers.conv2d(pool3, filters=128, kernel_size=(
+                3, 1), strides=1, padding='same', activation=tf.nn.relu)
+            pool4 = tf.layers.max_pooling2d(conv4, pool_size=(4, 4), strides=4)
+            conv5 = tf.layers.conv2d(pool4, filters=64, kernel_size=(
+                3, 1), strides=1, padding='same', activation=tf.nn.relu)
+            out = tf.layers.max_pooling2d(conv5, pool_size=(4, 4), strides=4)
 
         flatten = tf.layers.flatten(out)
         print('CNN builded', flatten.shape)
         return flatten
 
-    def Inference_RNN(self, X, mode=tf.estimator.ModeKeys.TRAIN):
+    def Inference_CNN(self, X):
+        conv1 = tf.layers.conv2d(X, filters=16, kernel_size=(
+            3, 1), strides=1, padding='same', activation=tf.nn.relu)
+        pool1 = tf.layers.max_pooling2d(conv1, pool_size=(2, 2), strides=2)
+        conv2 = tf.layers.conv2d(pool1, filters=32, kernel_size=(
+            3, 1), strides=1, padding='same', activation=tf.nn.relu)
+        pool2 = tf.layers.max_pooling2d(conv2, pool_size=(2, 2), strides=2)
+        conv3 = tf.layers.conv2d(pool2, filters=64, kernel_size=(
+           3, 1), strides=1, padding='same', activation=tf.nn.relu)
+        pool3 = tf.layers.max_pooling2d(conv3, pool_size=(2, 2), strides=2)
+        conv4 = tf.layers.conv2d(pool3, filters=128, kernel_size=(
+            3, 1), strides=1, padding='same', activation=tf.nn.relu)
+        pool4 = tf.layers.max_pooling2d(conv4, pool_size=(4, 4), strides=4)
+        conv5 = tf.layers.conv2d(pool4, filters=64, kernel_size=(
+            3, 1), strides=1, padding='same', activation=tf.nn.relu)
+        out = tf.layers.max_pooling2d(conv5, pool_size=(4, 4), strides=4)
+
+        flatten = tf.layers.flatten(out)
+        print('CNN builded', flatten.shape)
+        return flatten
+
+    def Inference_RNN_(self, X, mode=tf.estimator.ModeKeys.TRAIN):
         X = tf.reshape(X, (-1, 128, 513))
         shape = tf.shape(X)
         lstm_cell = tf.contrib.rnn.BasicLSTMCell(
@@ -86,21 +138,37 @@ class PRCNN():
         results = outputs[-1]
         print(results.shape)
         return results
+    
+    def Inference_RNN(self, X, mode=tf.estimator.ModeKeys.TRAIN):
+        pool1 = tf.layers.max_pooling2d(X, pool_size=(1, 2), strides=(1, 2))
+        pool1 = tf.reshape(pool1, (-1, 128, 256))
+        print(pool1.get_shape())
+        fw = tf.contrib.rnn.BasicLSTMCell(
+            1, forget_bias=1.0, state_is_tuple=True)
+        bw = tf.contrib.rnn.BasicLSTMCell(
+            1, forget_bias=1.0, state_is_tuple=True)
+        outputs, _ = tf.nn.bidirectional_dynamic_rnn(fw, bw, pool1, dtype=tf.float32, time_major=False)
+        out = tf.concat(outputs, 1)
+        out = tf.reshape(out, (-1, 256))
+        print(out.shape)
+        return out
 
     def Inference_Dense(self, cnn, lstm, mode=tf.estimator.ModeKeys.TRAIN):
         init = tf.concat([cnn, lstm], axis=1)
-        dense = tf.layers.dense(init, units=10)
+        dense = tf.layers.dense(cnn, units=10)
         print('Dense builded')
         return dense
 
     def Optimize(self, output, label):
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
             labels=tf.one_hot(label, depth=10), logits=output))
-        optimizer = tf.train.AdamOptimizer().minimize(loss)
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        with tf.control_dependencies(update_ops):
+            optimizer = tf.train.AdamOptimizer().minimize(loss)
         print('Optimize()')
         return loss, optimizer
 
-    def Build(self, mode):
+    def Build(self, mode=tf.estimator.ModeKeys.TRAIN):
         self.varX = tf.placeholder(dtype=tf.float32, shape=(None, 128, 513, 1))
         self.varLabel = tf.placeholder(dtype=tf.int32, shape=(None,))
         cnn = self.Inference_CNN(self.varX)
@@ -116,23 +184,39 @@ class PRCNN():
         correct = sess.run(eval_, feed_dict={self.varX: X})
         return correct
 
-    def train(self, epoch=3, batch_per_epoch=200):
+    def train(self, epochs=1000):
         if not self.builded:
             raise Exception()
+        acc_old = 0
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
-            for i in range(epoch):
-                for j in range(batch_per_epoch):
-                    batchX, batchY = self.GetNextBatch()
+            self.saver = tf.train.Saver()
+            ckpt = tf.train.get_checkpoint_state(MODEL_PATH)
+            if ckpt and ckpt.model_checkpoint_path:
+                self.saver.restore(sess, ckpt.model_checkpoint_path)
+                print('load from checkpoint')
+
+            for epoch in range(epochs):
+                step = 0
+                batch = self.batch_generator()
+                while step <= self.X.shape[0] / self.BatchSize:
+                    try:
+                        batchX, batchY = next(batch)
+                    except StopIteration:
+                        pass
                     # don't forget that batchY is one-hot label, convert it using tf.one_hot in loss
                     l, _ = sess.run([self.loss, self.optimizer], feed_dict={
                         self.varX: batchX, self.varLabel: batchY})
-                    if j % 50 == 0:
-                        print("epoch %d, batch %d, loss: %f" % (i, j, l))
-                
+                    if step % 10 == 0:
+                        print("epoch %d, step %d, loss: %f" % (epoch, step, l))
+                    step += 1
                 correct = self.Validation(sess, self.TestX, self.TestY)
-                print("acc: %f" % (correct[correct].size / correct.size))
-
+                acc = correct[correct].size / correct.size
+                print("acc: {}", format(acc))
+                if acc > acc_old:
+                    acc_old = acc
+                    self.saver.save(sess, MODEL_PATH + '/model.ckpt')
+                    print('model saved')
             print("test: ")
             correct = self.Validation(sess, self.TestX, self.TestY)
             print("acc: %f" % (correct[correct].size / correct.size))

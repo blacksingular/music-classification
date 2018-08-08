@@ -2,7 +2,7 @@ import os
 
 import tensorflow as tf
 
-from CNTK_RNN_fma import PRCNN
+from PRCNN import PRCNN
 
 
 def main():
@@ -10,8 +10,8 @@ def main():
     print('PRCNN')
     model.Build()
     print('builded')
-    # model.train()
-    # print('trained')
+    model.train()
+    print('trained')
 
 
 main()
