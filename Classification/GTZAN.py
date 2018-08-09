@@ -104,11 +104,13 @@ def PrepareData(X, y):
 
     # split (train + valid) : test = 9 : 1
     k = X.shape[0] // 10
-    trainX = X[:9*k]
-    testX = X[9*k:]
-    trainY = y[:9*k]
-    testY = y[9*k:]
+    trainX = X[:6*k]
+    validX = X[6*k:8*k]
+    testX = X[8*k:]
+    trainY = y[:6*k]
+    validY = y[6*k:8*k]
+    testY = y[8*k:]
 
     print('PrepareData()')
 
-    return trainX, trainY, testX, testY
+    return trainX, trainY, validX, validY, testX, testY

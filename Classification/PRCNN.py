@@ -42,9 +42,10 @@ class PRCNN():
 
     def __init__(self):
         x, y = G.getPCMmatrix()
-        self.RawX, self.Y, self.RawTestX, self.TestY = G.PrepareData(x, y)
+        self.RawX, self.Y, self.RawValX, self.ValidY, self.RawTestX, self.TestY = G.PrepareData(x, y)
         self.X = G.getProcessedMatrix(self.RawX)
         self.TestX = G.getProcessedMatrix(self.RawTestX)
+        self.ValidX = G.getProcessedMatrix(self.RawValX)
         print('X: ', self.X.shape)
         print('Y: ', self.Y.shape)
         print('TestX: ', self.TestX.shape)
@@ -218,13 +219,26 @@ class PRCNN():
                     if step % 10 == 0:
                         print("epoch %d, step %d, loss: %f" % (epoch, step, l))
                     step += 1
-                correct = self.Validation(sess, self.TestX, self.TestY)
+                correct = self.Validation(sess, self.ValidX, self.ValidY)
                 acc = correct[correct].size / correct.size
                 print("acc: ", format(acc))
                 if acc > acc_old:
                     acc_old = acc
                     self.saver.save(sess, MODEL_PATH + '/model.ckpt')
                     print('model saved')
-            print("test: ")
-            correct = self.Validation(sess, self.TestX, self.TestY)
-            print("acc: %f" % (correct[correct].size / correct.size))
+
+    def test(self):
+        if not self.builded:
+            raise Exception()
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            self.saver = tf.train.Saver()
+            ckpt = tf.train.get_checkpoint_state(MODEL_PATH)
+            if ckpt and ckpt.model_checkpoint_path:
+                self.saver.restore(sess, ckpt.model_checkpoint_path)
+                print('load from checkpoint')
+                print("test: ")
+                correct = self.Validation(sess, self.TestX, self.TestY)
+                print("acc: %f" % (correct[correct].size / correct.size))
+            else:
+                print('no model exists')
