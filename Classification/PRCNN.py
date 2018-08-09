@@ -35,7 +35,7 @@ import tensorflow as tf
 
 import GTZAN as G
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 MODEL_PATH = './tfmodel'
 class PRCNN():
     """Parelleling Bi-RNN + CNN"""
@@ -55,6 +55,9 @@ class PRCNN():
     def batch_generator(self):
         batch_x = []
         batch_y = []
+        shuffle_indices = np.random.permutation(np.arange(len(self.Y)))
+        self.X = self.X[shuffle_indices]
+        self.Y = self.Y[shuffle_indices]
         for i in range(self.X.shape[0]):
             batch_x.append(self.X[i])
             batch_y.append(self.Y[i])
@@ -200,7 +203,7 @@ class PRCNN():
             if ckpt and ckpt.model_checkpoint_path:
                 self.saver.restore(sess, ckpt.model_checkpoint_path)
                 print('load from checkpoint')
-
+            # sess.graph.finalize()
             for epoch in range(epochs):
                 step = 0
                 batch = self.batch_generator()
@@ -217,7 +220,7 @@ class PRCNN():
                     step += 1
                 correct = self.Validation(sess, self.TestX, self.TestY)
                 acc = correct[correct].size / correct.size
-                print("acc: {}", format(acc))
+                print("acc: ", format(acc))
                 if acc > acc_old:
                     acc_old = acc
                     self.saver.save(sess, MODEL_PATH + '/model.ckpt')
